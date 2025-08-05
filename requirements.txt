@@ -1,0 +1,11 @@
+kornia
+natsort
+numpy
+pandas
+Pillow
+rasterio
+tifffile
+torch # cpu only
+torchvision
+tqdm
+matplotlib

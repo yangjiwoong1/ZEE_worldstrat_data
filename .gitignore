@@ -1,0 +1,5 @@
+dataset/
+.DS_store
+test_dataset/
+model/
+__pycache__/
