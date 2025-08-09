@@ -234,3 +234,177 @@ class RandomRotateFlipDict:
             if flip:
                 item = TF.vflip(item)
         return item
+    
+def lanczos_kernel(translation_in_px, kernel_lobes=3, kernel_width=None):
+    """ Generates 1D Lanczos kernels for translation and interpolation.
+    Adapted from: https://github.com/ElementAI/HighRes-net/blob/master/src/lanczos.py
+
+    Parameters
+    ----------
+    translation_in_px : Tensor
+        Translation in (sub-)pixels, (B,1).
+    kernel_lobes : int, optional
+        Number of kernel lobes, by default 3.
+        If kernel_lobes is None, then the width is the kernel support 
+        (length of all lobes), S = 2(a + ceil(subpixel_x)) + 1.
+    kernel_width : Optional[int], optional
+        Kernel width, by default None.
+
+    Returns
+    -------
+    Tensor
+        1D Lanczos kernel, (B,) or (N,) or (S,).
+    """
+
+    device = translation_in_px.device
+    dtype = translation_in_px.dtype
+
+    absolute_rounded_translation_in_px = translation_in_px.abs().ceil().int()
+    # width of kernel support
+    kernel_support_width = 2 * (kernel_lobes + absolute_rounded_translation_in_px) + 1
+
+    maximum_support_width = (
+        kernel_support_width.max()
+        if hasattr(kernel_support_width, "shape")
+        else kernel_support_width
+    )
+
+    if (kernel_width is None) or (kernel_width < maximum_support_width):
+        kernel_width = kernel_support_width
+
+    # Width of zeros beyond kernel support
+    zeros_beyond_support_width = (
+        ((kernel_width - kernel_support_width) / 2).floor().int()
+    )
+
+    start = (
+        -(
+            kernel_lobes
+            + absolute_rounded_translation_in_px
+            + zeros_beyond_support_width
+        )
+    ).min()
+    end = (
+        kernel_lobes
+        + absolute_rounded_translation_in_px
+        + zeros_beyond_support_width
+        + 1
+    ).max()
+    x = (
+        torch.arange(start, end, dtype=dtype, device=device).view(1, -1)
+        - translation_in_px
+    )
+    px = (np.pi * x) + 1e-3
+
+    sin_px = torch.sin(px)
+    sin_pxa = torch.sin(px / kernel_lobes)
+
+    # sinc(x) masked by sinc(x/a)
+    k = kernel_lobes * sin_px * sin_pxa / px ** 2
+
+    return k
+
+
+def lanczos_shift(x, shift, padding=3, kernel_lobes=3):
+    """ Shifts an image by convolving it with a Lanczos kernel.
+    Lanczos interpolation is an approximation to ideal sinc interpolation,
+    by windowing a sinc kernel with another sinc function extending up to
+    a few number of its lobes (typically 3).
+
+    Adapted from:
+            https://github.com/ElementAI/HighRes-net/blob/master/src/lanczos.py
+
+    Parameters
+    ----------
+    x : Tensor
+        Image to be shifted, (batch_size, channels, height, width).
+    shift : Tensor
+        Shift in (sub-)pixels/translation parameters, (B,2).
+    padding : int, optional
+        Width of the padding prior to convolution, by default 3.
+    kernel_lobes : int, optional
+        Number of lobes of the Lanczos interpolation kernel, by default 3.
+
+    Returns
+    -------
+    _type_
+        _description_
+    """
+
+    (batch_size, channels, height, width) = x.shape
+
+    # Because examples and channels are interleaved in dim 1.
+    shift = shift.repeat(channels, 1)  # (B, C * 2)
+    shift = shift.reshape(batch_size * channels, 2)  # (B * C, 2)
+    x = x.view(1, batch_size * channels, height, width)
+
+    # Reflection pre-padding.
+    pad = torch.nn.ReflectionPad2d(padding)
+    x = pad(x)
+
+    # 1D shifting kernels.
+    y_shift = shift[:, [0]]
+    x_shift = shift[:, [1]]
+
+    # Flip dimension of convolution and expand dims to (batch_size, channels, len(kernel_y), 1).
+    kernel_y = (lanczos_kernel(y_shift, kernel_lobes=kernel_lobes).flip(1))[
+        :, None, :, None
+    ]
+    kernel_x = (lanczos_kernel(x_shift, kernel_lobes=kernel_lobes).flip(1))[
+        :, None, None, :
+    ]
+
+    # 1D-convolve image with kernels: shifts image on x- then y-axis.
+    x = torch.conv1d(
+        x,
+        groups=kernel_y.shape[0],
+        weight=kernel_y,
+        padding=[kernel_y.shape[2] // 2, 0],  # "same" padding.
+    )
+    x = torch.conv1d(
+        x,
+        groups=kernel_x.shape[0],
+        weight=kernel_x,
+        padding=[0, kernel_x.shape[3] // 2],
+    )
+
+    # Remove padding.
+    x = x[..., padding:-padding, padding:-padding]
+
+    return x.view(batch_size, channels, height, width)
+
+
+class Shift:
+    """ Sub-pixel image shifter with Lanczos shifting and interpolation kernels. """
+
+    def __init__(self, padding=5, kernel_lobes=3):
+        """ Initialize Shift.
+
+        Parameters
+        ----------
+        padding : int, optional
+            Width of the padding prior to convolution, by default 5.
+        kernel_lobes : int, optional
+            Number of lobes of the Lanczos interpolation kernel, by default 3.
+        """
+        self.padding = padding
+        self.kernel_lobes = kernel_lobes
+
+    def __call__(self, x, shift):
+        """ Shift an image by convolving it with a Lanczos kernel.
+
+        Parameters
+        ----------
+        x : Tensor
+            Image to be shifted, (batch_size, channels, height, width).
+        shift : Tensor
+            Shift in (sub-)pixels/translation parameters, (batch_size,2).
+
+        Returns
+        -------
+        Tensor
+            Shifted image, (batch_size, channels, height, width).
+        """
+        return lanczos_shift(
+            x, shift.flip(-1), padding=self.padding, kernel_lobes=self.kernel_lobes
+        )
