@@ -216,11 +216,13 @@ class LitModel(pl.LightningModule):
         """
         # 1. 데이터 변환
         batch = self.transform(batch)  # GPU/Batched data augmentation
-        x, y = batch["lr"], batch["hr"]  # [B, C, H, W]
-        
-        # 2. 모델 입력을 위해 revisit 차원 추가
-        x = x[:, None, ...]  # [B, C, H, W] -> [B, 1, C, H, W]
-        y = y[:, None, ...]  # [B, C, H, W] -> [B, 1, C, H, W]
+        x, y = batch["lr"], batch["hr"]  # [B, C, H, W] or [B, 1, C, H, W]
+
+        # 2. 모델 입력을 위해 revisit 차원 추가 (이미 5D면 추가하지 않음)
+        if x.ndim == 4:
+            x = x[:, None, ...]  # [B, C, H, W] -> [B, 1, C, H, W]
+        if y.ndim == 4:
+            y = y[:, None, ...]  # [B, C, H, W] -> [B, 1, C, H, W]
         
         # 3. 마스크 적용
         x = self.apply_masks_to_x(x, batch)
@@ -654,7 +656,7 @@ class ImagePredictionLogger(pl.Callback):
         pl_module : pytorch_lightning.LightningModule
             The model.
         """
-        lr, hr = batch["lr"], batch["hr"]
+        lr, hr = batch["lr"], batch["hr"]          # (B, C, H, W)
         batch = self.move_batch_to_device(batch, pl_module.device)
 
         metrics, baseline_metrics = self.fetch_metrics_for_split(prefix, pl_module)
@@ -664,10 +666,14 @@ class ImagePredictionLogger(pl.Callback):
         )
         sr, sr_base = self.get_output_and_baseline(loss_output)
 
-        window_size, window_size_hr = self.calculate_window_size(lr, hr, pl_module)
+        # 로깅 경로에서만 LR/HR을 5D로 표준화
+        lr_5d = lr[:, None, ...] if lr.ndim == 4 else lr
+        hr_5d = hr[:, None, ...] if hr.ndim == 4 else hr
+
+        window_size, window_size_hr = self.calculate_window_size(lr_5d, hr_5d, pl_module)
 
         lr, hr, sr, sr_base = self.extract_patches_from_images(
-            sr, sr_base, lr, hr, window_size, window_size_hr
+            sr, sr_base, lr_5d, hr_5d, window_size, window_size_hr
         )
 
         instance_psnr, baseline_psnr = self.extract_psnr_values_for_patches(

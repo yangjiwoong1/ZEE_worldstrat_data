@@ -264,7 +264,7 @@ def initialise_wandb(args):
     if not args.use_wandb:  # wandb 비활성화가 기본
         return
     tags = [] if not args.upload_checkpoint else ["inference"]
-    wandb.init(project="esasuperres", tags=tags)
+    wandb.init(project="worldstrat_srcnn", tags=tags)
     wandb.run.log_code("./src/")
 
 
