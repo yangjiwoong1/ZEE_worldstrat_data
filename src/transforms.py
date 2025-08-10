@@ -1,4 +1,3 @@
-from tkinter import image_types
 import numpy as np
 import kornia
 import torch

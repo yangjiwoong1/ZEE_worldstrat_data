@@ -461,18 +461,18 @@ class LitModel(pl.LightningModule):
 
     def validation_epoch_end(self, validation_step_output):
         instance_loss = torch.cat(validation_step_output).to("cpu")
-        if "wandb" in str(type(self.logger.experiment)).lower():
-            # WandB logger일 때
-            self.logger.experiment.log(
-                {
-                    "val/loss_hist": wandb.Histogram(instance_loss),
-                    "global_step": self.global_step,
-                }
-            )
-        else:
-            # TensorBoard logger일 때
-            self.logger.experiment.add_histogram("val/loss_hist", instance_loss, self.global_step)
-
+        
+        # WandB 로거가 있을 때만 히스토그램 로깅
+        if isinstance(self.logger, pl.loggers.WandbLogger):
+            try:
+                self.logger.experiment.log(
+                    {
+                        "val/loss_hist": wandb.Histogram(instance_loss),
+                        "global_step": self.global_step,
+                    }
+                )
+            except ValueError as e:
+                print(e)
 
     def test_step(self, batch, batch_idx):
         """Test step.+
