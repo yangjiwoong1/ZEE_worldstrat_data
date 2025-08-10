@@ -108,7 +108,7 @@ def generate_and_run_trainer(args, dataloaders, model):
     model : LightningModule
         The Lightning model.
     """
-    trainer = pl.Trainer.from_argparse_args(args) # accelerator="cpu", devices=1
+    trainer = pl.Trainer.from_argparse_args(args, accelerator="cpu", devices=1) # accelerator="cpu", devices=1
     trainer.fit(model, dataloaders["train"], dataloaders["val"])
 
     if not args.fast_dev_run:
@@ -370,6 +370,30 @@ def add_project_specific_arguments(parser):
         default=False,
         type=bool,
         help="Pansharpen the highres RGB using the panchromatic channel.",
+    ),
+    parser.add_argument(
+        "--normalize_lr",
+        default=True,
+        type=bool,
+        help="Normalize the low resolution images.",
+    )
+    parser.add_argument(
+        "--use_single_frame_sr",
+        default=True,
+        type=bool,
+        help="Use single frame SR.",
+    )
+    parser.add_argument(
+        "--randomly_rotate_and_flip_images",
+        default=True,
+        type=bool,
+        help="Randomly rotate and flip the images.",
+    )
+    parser.add_argument(
+        "--shuffle",
+        default=True,
+        type=bool,
+        help="Shuffle the dataset.",
     )
     parser.add_argument(
         "--compute_median_std",

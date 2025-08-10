@@ -1141,7 +1141,7 @@ def set_subfolders_for_roots_JIF(root: str, radiometry_depth: int) -> dict[str, 
         return {
             "lr": os.path.join(root, "lr_dataset", "*", "L2A", ""), # 디렉토리만 매칭
             "lrc": os.path.join(root, "lr_dataset", "*", "L2A", ""),
-            "hr": os.path.join(root, "hr_dataset", "*", ""),
+            "hr": os.path.join(root, "hr_dataset", "12bit", "*", ""),
             #"hr_pan": os.path.join(root, "hr_dataset", "*", ""),
             #"metadata": os.path.join(root, "hr_dataset",  "*", ""),
         }
