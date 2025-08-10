@@ -1,4 +1,4 @@
-kornia
+kornia==0.6.3
 natsort
 numpy
 pandas
@@ -9,3 +9,6 @@ torch # cpu only
 torchvision
 tqdm
 matplotlib
+pytorch-lightning==1.9.0
+wandb
+pytorch_msssim
